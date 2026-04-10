@@ -1,18 +1,25 @@
 # Aurex Multilingual Voice Banking System
 
-A complete end-to-end prototype of a Voice AI Banking Assistant featuring intent routing, multi-language support (English, Hindi, Tamil), real-time STT/TTS (via Sarvam AI), and a FastAPI backend routing LLM calls over Groq's LLaMA 3 model.
+A complete end-to-end prototype of a Voice AI Banking Assistant featuring intent routing, multi-language support (English, Hindi, Tamil), real-time STT/TTS (via Sarvam AI), JWT Authentication, and a FastAPI backend routing LLM calls over Groq's LLaMA 3.1 model.
+
+## Architecture & Tech Stack
+* **Frontend**: Next.js (App Router), React, Tailwind CSS, Zustand
+* **Backend**: FastAPI, SQLAlchemy (SQLite), JWT Authentication (passlib/bcrypt)
+* **AI/Parsing**: Groq API, Sarvam AI, pdfplumber, pandas
 
 ## Folder Structure
 
 ```text
 dsproject/
- ├── test.html                  # Main frontend SPA (incorporates HTML/CSS/JS)
- ├── README.md                  # This file
- └── backend/
-      ├── main.py               # FastAPI server with LLM/routing logic
-      ├── mock_db.json          # Simple file-based mock database
-      ├── requirements.txt      # Python dependencies
-      └── .env                  # (You must create this)
+ ├── frontend/                  # Next.js UI Frontend SPA
+ ├── backend/
+ │    ├── main.py               # FastAPI server and AI/Routing logic
+ │    ├── auth.py               # JWT and Bcrypt authentication logic
+ │    ├── database.py           # SQLite connection and models
+ │    ├── aurex.db              # Auto-generated SQLite Database
+ │    ├── requirements.txt      # Python dependencies
+ │    └── .env                  # (You must create this)
+ └── README.md                  # This file
 ```
 
 ## How to Run
@@ -26,56 +33,62 @@ dsproject/
    ```bash
    pip install -r requirements.txt
    ```
+   *(Note: `bcrypt` must be exactly version 3.2.2 to prevent passlib crashes).*
 3. Setup Environment Variables:
    - Create a `.env` file in the `backend` folder and add your APIs:
      ```env
      GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
      SARVAM_API_KEY=your_sarvam_api_key_here
      ```
-   *(Note: You can also paste the Groq API key directly in the web UI, but Sarvam requires the .env).*
-
 4. Run the FastAPI Server:
    ```bash
    python -m uvicorn main:app --reload
    ```
-   *The server will start at `http://localhost:8000`.*
+   *The server will start at `http://localhost:8000`. Upon its first startup, it will auto-seed the database with the test user.*
 
 ### Step 2: Frontend Setup
-1. Simply double click `test.html` or open it in a Live Server or any browser (Chrome/Edge recommended for best Web Speech API support).
-2. Because of Cross-Origin policies with the microphone, it is strongly recommended you serve it using a local HTTP server. For example:
+1. CD into the frontend directory:
    ```bash
-   python -m http.server 3000
+   cd ../frontend
    ```
-   Then visit `http://localhost:3000/test.html`
+2. Install Node dependencies:
+   ```bash
+   npm install
+   ```
+3. Start the Next.js development server:
+   ```bash
+   npm run dev
+   ```
+   *The UI will start at `http://localhost:3000`.*
 
 ### Step 3: Usage
-1. Provide the Groq API key in the UI field or ensure your backend `.env` is loaded.
-2. Login with User: `ashwin`, Pass: `password123`.
-3. Try asking:
+1. Visit `http://localhost:3000` in your browser.
+2. **Log In** using the auto-seeded credentials:
+   - **Email**: `ashwin@aurex.com`
+   - **Password**: `password123`
+3. On the Dashboard, you can click **Upload Statement** to parse a Bank Statement PDF/CSV for AI insights.
+4. Click **Ask Aurex AI** to test voice commands:
    - "What is my balance?"
    - "Show my recent transactions"
    - "Transfer 5000 to Vishal"
-4. You can also change the language dropdown to speak/listen in Hindi or Tamil.
-5. While the AI speaks, you can use the Play/Pause and Stop buttons near the chat header to control playback, or simply tap the mic to interrupt!
+5. Use the drop-down on the top right to switch between English, Hindi, and Tamil interactions.
 
 ## Troubleshooting & Error History (Session Log)
 
-During the development and integration of the Sarvam AI and FastAPI backend, we encountered and resolved several complex errors:
+During development, several complex architectural errors were resolved:
 
-### 1. Backend Dependency & Execution Errors
-* **Rust Build Errors on Install**: Encountered `pip install` failures due to outdated pinned dependencies trying to compile Rust binaries for Python 3.13. **Solution**: Upgraded `pydantic>=2.7.0` and `fastapi>=0.110.0` in `requirements.txt`.
-* **Uvicorn Not Recognized**: Windows PowerShell failed to recognize the `uvicorn` command. **Solution**: Adjusted the startup command to launch via the Python module: `python -m uvicorn main:app --reload`.
-* **.env Context Pathing**: The backend threw 400 errors because `SARVAM_API_KEY` was empty. The `load_dotenv()` was failing based on the Terminal's current working directory. **Solution**: Hardcoded the environment path dynamically using `os.path.join(os.path.dirname(__file__), '.env')`.
+### 1. Bcrypt & Passlib 72-Byte Limit Crash
+* **Issue**: Uvicorn kept failing with `ValueError: password cannot be longer than 72 bytes` and an `AttributeError: module 'bcrypt' has no attribute '__about__'`.
+* **Solution**: Newer versions of `bcrypt` (>4.0.0) broke compatibility with `passlib`. Hard-downgraded and pinned `bcrypt==3.2.2` within the virtual environment.
 
-### 2. Frontend Browser API Override
-* **Tamil Translated as English**: When speaking Tamil, the frontend transcribed it as broken English (e.g., "you know the bank balance available"). This occurred because the frontend was still using the browser's native `window.SpeechRecognition` (hardcoded to English) and native `window.speechSynthesis` instead of our actual Sarvam API endpoints.
-* **Solution**: Completely stripped out the Web Speech API from `test.html`. Replaced it with the `MediaRecorder` API to capture `.wav` microphone chunks and POST them to our `/stt` backend endpoint. Replaced TTS playback with an HTML `Audio()` object playing Base64 MP3 data from our `/tts` endpoint.
+### 2. Groq AI Model Deprecation (400 Bad Request)
+* **Issue**: The PDF upload endpoint crashed with `model_decommissioned` for `llama3-8b-8192`.
+* **Solution**: Updated the Groq API payload across `main.py` (both document parser and AI insights generator) to utilize the active `llama-3.1-8b-instant` model.
 
-### 3. Sarvam AI API Migrations (400 Bad Requests)
-* **Legacy Speaker Deprecation**: The TTS endpoint returned `Speaker 'pallavi' is not recognized`. Sarvam retired older voice footprints. **Solution**: Updated the `speaker_map` to newer voices (`anushka`, `amit`, `kavitha`).
-* **Legacy Model Deprecation**: The TTS endpoint returned `Input should be 'bulbul:v2' or 'bulbul:v3'`. The old `aura-tts-phx` model was deactivated by Sarvam. **Solution**: Upgraded the payload to use `model: "bulbul:v3"`.
-* **Streaming Endpoint Requirement**: The standard `/text-to-speech` endpoint rejected the `bulbul:v3` structure. **Solution**: Migrated the API call to `https://api.sarvam.ai/text-to-speech/stream`. Restructured the payload to use `"text"` (instead of `"inputs"`), `"speech_sample_rate": 22050`, and `"output_audio_codec": "mp3"`. We then buffered the streamed MP3 response in FastAPI and encoded it to Base64 for the frontend.
-* **Incompatible Speakers for Bulbul V3**: The TTS API returned `Speaker 'anushka' is not compatible with model bulbul:v3`. Sarvam's new V3 model has a distinct set of approved speakers. **Solution**: Successfully mapped the final compatible V3 speakers:
-  * **Tamil (`ta-IN`)**: `ritu`
-  * **Hindi (`hi-IN`)**: `priya`
-  * **English (`en-IN`)**: `sumit`
+### 3. Frontend Browser API Override
+* **Issue**: Native browser speech recognition failed to map Indian languages correctly, returning broken English while speaking Tamil/Hindi.
+* **Solution**: Stripped out the Web Speech API. Built a unified audio pipeline utilizing `MediaRecorder` API to push raw `.wav` buffers to Sarvam AI's STT and fetched Base64 MP3 buffers back for playback.
+
+### 4. Sarvam AI Streaming Migrations
+* **Issue**: `bulbul:v3` model required an exclusively streamlined playback endpoint and strictly incompatible speaker identifiers.
+* **Solution**: Migrated to `api.sarvam.ai/text-to-speech/stream`. Mapped supported Gen-3 speakers (`sumit`, `priya`, `ritu`).
