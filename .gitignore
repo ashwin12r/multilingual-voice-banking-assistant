@@ -5,3 +5,10 @@ __pycache__/
 *.pyc
 venv/
 .venv/
+
+# My Custom Ignores
+backend/aurex.db
+backend/.env
+.venv/
+frontend/.env
+
